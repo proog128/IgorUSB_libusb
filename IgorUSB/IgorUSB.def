@@ -1,0 +1,15 @@
+LIBRARY IgorUSB
+EXPORTS
+    DoSetInfraBufferEmpty
+    DoGetInfraCode
+    DoSetDataPortDirection
+    DoGetDataPortDirection
+    DoSetOutDataPort
+    DoGetOutDataPort
+    DoGetInDataPort
+    DoEEPROMRead
+    DoEEPROMWrite
+    DoRS232Send
+    DoRS232Read
+    DoSetRS232Baud
+    DoGetRS232Baud
