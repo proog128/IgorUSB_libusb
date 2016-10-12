@@ -1,0 +1,13 @@
+Version 1.2 (released 2016-10-12)
+
+  * Use libusb instead of libusb-win32 for Windows 10 support
+
+Version 1.1 (released 2014-05-24)
+
+  * Improved compatibility with original IgorUSB.dll (name mangling)
+
+  * Fixed a bug that causes some bytes to get lost
+
+Version 1.0 (released 2012-07-21)
+
+ * First release

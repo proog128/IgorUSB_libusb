@@ -2,7 +2,10 @@
 
 #include "IgorUSB.h"
 
-#include "lusb0_usb.h"
+#pragma warning(push)
+#pragma warning(disable:4200 4510 4512 4610)
+#include "libusb.h"
+#pragma warning(pop)
 
 #define VENDOR_ATMEL    0x03eb
 #define DEVICE_IGORPLUG 0x0002
@@ -13,7 +16,8 @@
 #define HEADER_LENGTH 3
 #define MAX_BUFFER_SIZE 256
 
-struct usb_dev_handle* gDevice = NULL;
+libusb_context* gContext = NULL;
+libusb_device_handle* gDevice = NULL;
 
 bool OpenDevice()
 {
@@ -22,30 +26,22 @@ bool OpenDevice()
 
     if(!gDevice)
     {
-        usb_init();
-        usb_find_busses();
-        usb_find_devices();
-
-        struct usb_bus* bus;
-        struct usb_device* roottree;
-        struct usb_device* device;
-
-        for(bus = usb_busses; bus != NULL; bus = bus->next) 
+        if(!gContext)
         {
-            roottree = bus->devices;
-            for(device = roottree; device; device = device->next)
+            int err = libusb_init(&gContext);
+            if(err)
             {
-                if(    device->descriptor.idVendor == VENDOR_ATMEL
-                    && device->descriptor.idProduct == DEVICE_IGORPLUG)
-                {
-                    OutputDebugStringA("Found device at");
-                    OutputDebugStringA(device->bus->dirname);
-                    OutputDebugStringA(device->filename);
-
-                    gDevice = usb_open(device);
-                    return true;
-                }
+                OutputDebugStringA("Failed to initialize libusb.");
+                gContext = NULL;
+                return false;
             }
+        }
+
+        gDevice = libusb_open_device_with_vid_pid(gContext, VENDOR_ATMEL, DEVICE_IGORPLUG);
+        if(gDevice)
+        {
+            OutputDebugStringA("Found IgorPlugUSB device.");
+            return true;
         }
     }
 
@@ -54,21 +50,25 @@ bool OpenDevice()
 
 void CloseDevice()
 {
-    if(gDevice)
+    if(gContext)
     {
-        usb_close(gDevice);
-        gDevice = NULL;
+        if (gDevice)
+        {
+            libusb_close(gDevice);
+            gDevice = NULL;
+        }
+        libusb_exit(gContext);
     }
 }
 
-bool SendToDevice(int fn, int param1, int param2, char* buf, int buf_size, int& recvd_bytes)
+bool SendToDevice(uint8_t fn, uint16_t param1, uint16_t param2, unsigned char* buf, uint16_t buf_size, int& recvd_bytes)
 {
     if(OpenDevice())
     {
-        recvd_bytes = usb_control_msg(gDevice, USB_TYPE_VENDOR | USB_ENDPOINT_IN, fn, param1, param2, buf, buf_size, 500);
+        recvd_bytes = libusb_control_transfer(gDevice, LIBUSB_REQUEST_TYPE_VENDOR | LIBUSB_ENDPOINT_IN, fn, param1, param2, buf, buf_size, 500);
         if(recvd_bytes < 0)
         {
-            OutputDebugStringA(usb_strerror());
+            OutputDebugStringA(libusb_strerror((libusb_error)recvd_bytes));
             CloseDevice();
         }
 
@@ -81,8 +81,8 @@ IGORUSB_API int __stdcall DoSetInfraBufferEmpty()
 {
     int result = IGORUSB_DEVICE_NOT_PRESENT;
 
-    char buf[2];
-    int buf_size = 1;
+    unsigned char buf[2];
+    uint16_t buf_size = 1;
     int recvd_bytes;
 
     if(SendToDevice(DO_SET_INFRA_BUFFER_EMPTY, 0, 0, buf, buf_size, recvd_bytes))
@@ -93,7 +93,7 @@ IGORUSB_API int __stdcall DoSetInfraBufferEmpty()
 
 IGORUSB_API int __stdcall DoGetInfraCode(unsigned char* TimeCodeDiagram, int /*DummyInt*/, int* DiagramLength)
 {
-    char buf[MAX_BUFFER_SIZE];
+    unsigned char buf[MAX_BUFFER_SIZE];
     int bytes_to_read = 0;
     int i, buf_size, recvd, msg_idx, j, k, last_written_idx;
     static int last_read = -1;
@@ -128,7 +128,7 @@ IGORUSB_API int __stdcall DoGetInfraCode(unsigned char* TimeCodeDiagram, int /*D
             break;
         }
 
-        if(!SendToDevice(DO_GET_INFRA_CODE, i + HEADER_LENGTH, 0, &buf[i], buf_size, recvd))
+        if(!SendToDevice(DO_GET_INFRA_CODE, (uint16_t)i + HEADER_LENGTH, 0, &buf[i], (uint16_t)buf_size, recvd))
             return IGORUSB_DEVICE_NOT_PRESENT;
 
         if(recvd < 0)
